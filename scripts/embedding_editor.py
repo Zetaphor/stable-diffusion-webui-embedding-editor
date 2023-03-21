@@ -159,13 +159,17 @@ def on_ui_tabs():
                 generation_info,
                 html_info
             ],
-            show_progress=False,
+            show_progress=True,
         )
 
-        generate_preview_args = dict(fn=generate_test_images,
+        generate_preview_args = dict(fn=wrap_gradio_gpu_call(generate_test_images),
                                      inputs=[embedding_name, vector_num, prompt, steps,
                                              cfg_scale, seed, batch_count] + weight_sliders,
-                                     outputs=[])
+                                     outputs=[
+                                         gallery,
+                                         generation_info,
+                                         html_info
+        ], show_progress=True)
 
         generate_preview.click(**preview_args)
 
@@ -251,10 +255,8 @@ def generate_test_images(embedding_name, vector_num, prompt, steps, cfg_scale, s
     print('Test weights', len(test_values))
     print(test_values)
 
-    wrap_gradio_gpu_call(generate_embedding_preview(
-        embedding_name, vector_num, prompt, steps, cfg_scale, seed, batch_count, *test_values))
-
-    return weights
+    return generate_embedding_preview(
+        embedding_name, vector_num, prompt, steps, cfg_scale, seed, batch_count, *test_values)
 
 
 def select_embedding(embedding_name, vector_num):
