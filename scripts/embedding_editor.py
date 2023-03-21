@@ -104,6 +104,9 @@ def on_ui_tabs():
                         guidance_hidden_cache = gr.HTML(
                             value="", visible=False)
 
+                        alignment_hidden_cache = gr.HTML(
+                            value="", visible=False)
+
                     with gr.Column(elem_id='embedding_editor_weight_sliders_container'):
                         for i in range(0, 128):
                             with gr.Row():
@@ -139,8 +142,12 @@ def on_ui_tabs():
             with gr.Column(variant='panel', scale=1.5):
                 with gr.Column():
                     with gr.Row():
+                        input_align_to = gr.Textbox(elem_id="align_to_token", value="", label="Alignment Token",
+                                                    placeholder="token", show_label=True, interactive=True)
+                        btn_align_to_input = gr.Button(
+                            value="Align To Token", variant='primary')
                         btn_generate_test = gr.Button(
-                            value="Generate Test Images", variant='primary')
+                            value="Generate 0 Weight Test Image", variant='primary')
 
         preview_args = dict(
             fn=wrap_gradio_gpu_call(generate_embedding_preview),
@@ -174,6 +181,13 @@ def on_ui_tabs():
         generate_preview.click(**preview_args)
 
         btn_generate_test.click(**generate_preview_args)
+
+        btn_align_to_input.click(
+            fn=None,
+            _js="align_to_embedding",
+            inputs=[alignment_hidden_cache],
+            outputs=[]
+        )
 
         selection_args = dict(
             fn=select_embedding,
@@ -220,6 +234,12 @@ def on_ui_tabs():
             outputs=[guidance_hidden_cache]
         )
 
+        guidance_embeddings.change(
+            fn=update_alignment_embeddings,
+            inputs=[guidance_embeddings],
+            outputs=[alignment_hidden_cache]
+        )
+
         guidance_update_button.click(
             fn=None,
             _js="embedding_editor_update_guidance",
@@ -230,17 +250,13 @@ def on_ui_tabs():
         guidance_hidden_cache.value = update_guidance_embeddings(
             guidance_embeddings.value)
 
+        alignment_hidden_cache.value = update_alignment_embeddings(
+            guidance_embeddings.value)
+
     return [(embedding_editor_interface, "Embedding Editor", "embedding_editor_interface")]
 
 
-# Here I am creating a function that will be called when the user clicks on the "Generate Test Images" button
 def generate_test_images(embedding_name, vector_num, prompt, steps, cfg_scale, seed, batch_count, *weights):
-
-    # generate_embedding_preview(
-    #     embedding_name, vector_num, prompt, steps, cfg_scale, seed, batch_count, *weights)
-
-    print('Received weights', len(weights))
-    print(weights)
     test_values = []
 
     for i in range(0, 128):
@@ -250,10 +266,7 @@ def generate_test_images(embedding_name, vector_num, prompt, steps, cfg_scale, s
             ) * embedding_editor_weight_visual_scalar
             ceil = embedding_editor_distribution_ceiling[index].item(
             ) * embedding_editor_weight_visual_scalar
-            test_values.append(0.01)
-
-    print('Test weights', len(test_values))
-    print(test_values)
+            test_values.append(0.0)
 
     return generate_embedding_preview(
         embedding_name, vector_num, prompt, steps, cfg_scale, seed, batch_count, *test_values)
@@ -327,6 +340,40 @@ def save_embedding_weights(embedding_name, vector_num, *weights):
                    embedding_name, filename, remove_cached_checksum=True)
 
     print(f"Saved embedding to {filename}")
+
+
+def update_alignment_embeddings(text):
+    try:
+        cond_model = shared.sd_model.cond_stage_model
+        embedding_layer = cond_model.wrapped.transformer.text_model.embeddings
+
+        pairs = [x.strip() for x in text.split(',')]
+
+        col_weights = {}
+
+        for pair in pairs:
+            word, col = pair.split(":")
+
+            ids = cond_model.tokenizer(
+                word, max_length=77, return_tensors="pt", add_special_tokens=False)["input_ids"]
+            embedding = embedding_layer.token_embedding.wrapped(
+                ids.to(devices.device)).squeeze(0)[0]
+            weights = []
+
+            for i in range(0, 768):
+                weight = embedding[i].item()
+                floor = embedding_editor_distribution_floor[i].item()
+                ceiling = embedding_editor_distribution_ceiling[i].item()
+
+                # adjust to range for using as a guidance marker along the slider
+                # weight = (weight - floor) / (ceiling - floor)
+                weights.append(weight)
+
+            col_weights[word] = weights
+
+        return col_weights
+    except:
+        return []
 
 
 def update_guidance_embeddings(text):
