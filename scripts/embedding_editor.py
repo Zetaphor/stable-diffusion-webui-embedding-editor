@@ -1,3 +1,4 @@
+import datetime
 import os
 from webui import wrap_gradio_gpu_call
 from modules import scripts, script_callbacks
@@ -12,6 +13,9 @@ import gradio as gr
 import gradio.routes
 import gradio.utils
 import torch
+import json
+import traceback
+import pickle
 
 # ISSUES
 # distribution shouldn't be fetched until the first embedding is opened, and can probably be converted into a numpy array
@@ -146,8 +150,14 @@ def on_ui_tabs():
                                                     placeholder="token", show_label=True, interactive=True)
                         btn_align_to_input = gr.Button(
                             value="Align To Token", variant='primary')
+                        btn_find_similar = gr.Button(
+                            value="Find Similar", variant='primary')
                         btn_generate_test = gr.Button(
                             value="Generate 0 Weight Test Image", variant='primary')
+                        btn_pickle_index = gr.Button(
+                            value="Pickle Weight Index", variant='primary')
+                        btn_write_weights = gr.Button(
+                            value="Write Weights", variant='primary')
 
         preview_args = dict(
             fn=wrap_gradio_gpu_call(generate_embedding_preview),
@@ -173,9 +183,9 @@ def on_ui_tabs():
                                      inputs=[embedding_name, vector_num, prompt, steps,
                                              cfg_scale, seed, batch_count] + weight_sliders,
                                      outputs=[
-                                         gallery,
-                                         generation_info,
-                                         html_info
+            gallery,
+            generation_info,
+            html_info
         ], show_progress=True)
 
         generate_preview.click(**preview_args)
@@ -187,6 +197,18 @@ def on_ui_tabs():
             _js="align_to_embedding",
             inputs=[alignment_hidden_cache],
             outputs=[]
+        )
+
+        btn_write_weights.click(
+            fn=write_token_weights,
+        )
+
+        btn_find_similar.click(
+            fn=find_most_similar,
+        )
+
+        btn_pickle_index.click(
+            fn=build_index_pickle,
         )
 
         selection_args = dict(
@@ -407,6 +429,134 @@ def update_guidance_embeddings(text):
 
         return col_weights
     except:
+        return []
+
+
+def build_index_pickle():
+    embedder = shared.sd_model.cond_stage_model.wrapped
+    sd_version = '1.x'
+    if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
+        print('Using SD1.x embedder')
+        internal_embs = embedder.transformer.text_model.embeddings.token_embedding.wrapped.weight
+
+    elif embedder.__class__.__name__ == 'FrozenOpenCLIPEmbedder':  # SD2.0 detected
+        print('Using SD2.x embedder')
+        sd_version = '2.x'
+        internal_embs = embedder.model.token_embedding.wrapped.weight
+
+    token_weights = {}
+    for i in range(0, 768):
+        token_weights[i] = []
+
+    internal_len = len(internal_embs)
+
+    start_time = datetime.datetime.now()
+
+    print('Building weight index...')
+    for i, row in enumerate(internal_embs):
+        for j, col in enumerate(row):
+            token_weights[j].append(col.item())
+        if i % 1000 == 0:
+            time_diff = datetime.datetime.now() - start_time
+            print(
+                f"Indexed {i} of {internal_len} at {round(time_diff.total_seconds(), 2)} seconds")
+
+    print(
+        f'Pickling weight index at {round(time_diff.total_seconds(), 2)} seconds')
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-tensored-weights.pkl'), 'wb') as f:
+        pickle.dump(token_weights, f)
+    print(
+        f'Finished pickling weights at {round(time_diff.total_seconds(), 2)} seconds')
+
+
+def find_most_similar():
+    embedder = shared.sd_model.cond_stage_model.wrapped
+    sd_version = '1.x'
+    if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
+        print('Using SD1.x embedder')
+
+    elif embedder.__class__.__name__ == 'FrozenOpenCLIPEmbedder':  # SD2.0 detected
+        print('Using SD2.x embedder')
+        sd_version = '2.x'
+
+    print('Loading pickled weights...')
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weights.pkl'), 'rb') as f:
+        token_weights = pickle.load(f)
+
+    cos_sim = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+    input_tensor = torch.tensor([token_weights[0][3055]])
+    # print('Input tensor:', input_tensor)
+    # print('Input tensor value:', input_tensor.item())
+
+    similarities = []
+    top_x = 3
+
+    for idx, token in enumerate(token_weights[0]):
+        token_tensor = torch.tensor([token])
+        difference = torch.abs(input_tensor - token_tensor).item()
+        similarities.append((difference, idx))
+
+    # Sort by difference and take the top X
+    top_x_similarities = sorted(similarities, key=lambda x: x[0])[:top_x]
+
+    top_x_similarities = sorted(
+        similarities, key=lambda x: x[0], reverse=False)[:top_x]
+
+    print("Top", top_x, "most similar floats and their indices:", top_x_similarities)
+
+    # print('Apple weight 0')
+    # print(token_weights[0][3055])
+
+    return []
+
+
+def write_token_weights():
+    try:
+        embedder = shared.sd_model.cond_stage_model.wrapped
+        if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
+            print('Using SD1.x embedder')
+            internal_embs = embedder.transformer.text_model.embeddings.token_embedding.wrapped.weight
+
+        elif embedder.__class__.__name__ == 'FrozenOpenCLIPEmbedder':  # SD2.0 detected
+            print('Using SD2.x embedder')
+            internal_embs = embedder.model.token_embedding.wrapped.weight
+
+        vocab_weights = {}
+        for i in range(0, 768):
+            vocab_weights[i] = {}
+
+        filename = 'sd1.5-vocab'
+        file_dir = os.path.join(
+            os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/vocabs', filename + '.json')
+        with open(file_dir, 'r') as f:
+            data = json.load(f)
+            data_len = len(data)
+
+        start_time = datetime.datetime.now()
+
+        print('Calculating vocab weights...')
+        for i, (key, value) in enumerate(data.items()):
+            emb_vec = internal_embs[value].squeeze(0)
+
+            # Store the token weight in the following structure: weight number -> token_id -> weight value
+            for j in range(0, 768):
+                vocab_weights[j][value] = emb_vec[j].item()
+
+            # Print every 1000 tokens
+            if i % 1000 == 0:
+                time_diff = datetime.datetime.now() - start_time
+                print(
+                    f"Stored {i} of {data_len} at {round(time_diff.total_seconds(), 2)} seconds")
+
+        print('Saving vocab weights...')
+        with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', filename + '-weights.json'), 'w') as f:
+            json.dump(vocab_weights, f)
+
+        print('Saved vocab weights to', filename + '-weights.json')
+
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
         return []
 
 
