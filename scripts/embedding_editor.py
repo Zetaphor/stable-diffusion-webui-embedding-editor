@@ -111,6 +111,9 @@ def on_ui_tabs():
                         alignment_hidden_cache = gr.HTML(
                             value="", visible=False)
 
+                        similarity_hidden_cache = gr.HTML(
+                            value="", visible=False)
+
                     with gr.Column(elem_id='embedding_editor_weight_sliders_container'):
                         for i in range(0, 128):
                             with gr.Row():
@@ -205,6 +208,7 @@ def on_ui_tabs():
 
         btn_find_similar.click(
             fn=find_most_similar,
+            inputs=[similarity_hidden_cache]
         )
 
         btn_pickle_index.click(
