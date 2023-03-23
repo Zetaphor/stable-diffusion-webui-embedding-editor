@@ -92,3 +92,7 @@ function align_to_embedding(embedWeights) {
     });
   }
 }
+
+function update_similarities(similarities) {
+  console.log("Update similarities", similarities);
+}

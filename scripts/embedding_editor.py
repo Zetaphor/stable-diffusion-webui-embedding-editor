@@ -153,14 +153,16 @@ def on_ui_tabs():
                                                     placeholder="token", show_label=True, interactive=True)
                         btn_align_to_input = gr.Button(
                             value="Align To Token", variant='primary')
-                        btn_find_similar = gr.Button(
-                            value="Find Similar", variant='primary')
+                        btn_find_similar_single = gr.Button(
+                            value="Find Similar (Single)", variant='primary')
+                        btn_find_similar_modular = gr.Button(
+                            value="Find Similar (Modular)", variant='primary')
                         btn_generate_test = gr.Button(
                             value="Generate 0 Weight Test Image", variant='primary')
                         btn_pickle_index = gr.Button(
-                            value="Pickle Weight Index", variant='primary')
+                            value="Create Weights Pickle", variant='primary')
                         btn_write_weights = gr.Button(
-                            value="Write Weights", variant='primary')
+                            value="Create Weights JSON", variant='primary')
 
         preview_args = dict(
             fn=wrap_gradio_gpu_call(generate_embedding_preview),
@@ -206,9 +208,20 @@ def on_ui_tabs():
             fn=write_token_weights,
         )
 
-        btn_find_similar.click(
-            fn=find_most_similar,
-            inputs=[similarity_hidden_cache]
+        def load_weights(*weights):
+            pickled_weights = load_pickled_weights()
+            return find_most_similar_modular(pickled_weights, weights)
+
+        btn_find_similar_modular.click(
+            fn=load_weights,
+            inputs=[] + weight_sliders,
+            outputs=[similarity_hidden_cache]
+        )
+
+        btn_find_similar_single.click(
+            fn=load_weights,
+            inputs=[] + weight_sliders,
+            outputs=[similarity_hidden_cache]
         )
 
         btn_pickle_index.click(
@@ -222,6 +235,14 @@ def on_ui_tabs():
                 vector_num,
             ],
             outputs=weight_sliders,
+        )
+
+        similarity_hidden_cache.change(
+            fn=None,
+            _js="update_similarities",
+            inputs=[
+                similarity_hidden_cache
+            ]
         )
 
         embedding_name.change(**selection_args)
@@ -467,13 +488,31 @@ def build_index_pickle():
 
     print(
         f'Pickling weight index at {round(time_diff.total_seconds(), 2)} seconds')
-    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-tensored-weights.pkl'), 'wb') as f:
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weights.pkl'), 'wb') as f:
         pickle.dump(token_weights, f)
     print(
         f'Finished pickling weights at {round(time_diff.total_seconds(), 2)} seconds')
 
 
-def find_most_similar():
+def load_pickled_weights():
+    embedder = shared.sd_model.cond_stage_model.wrapped
+    sd_version = '1.x'
+    if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
+        print('Using SD1.x embedder')
+
+    elif embedder.__class__.__name__ == 'FrozenOpenCLIPEmbedder':  # SD2.0 detected
+        print('Using SD2.x embedder')
+        sd_version = '2.x'
+
+    loaded_weights = None
+    print('Loading pickled weights...')
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weights.pkl'), 'rb') as f:
+        loaded_weights = pickle.load(f)
+    print('Finished loading pickled weights')
+    return loaded_weights
+
+
+def find_most_similar_single():
     embedder = shared.sd_model.cond_stage_model.wrapped
     sd_version = '1.x'
     if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
@@ -512,6 +551,69 @@ def find_most_similar():
     # print(token_weights[0][3055])
 
     return []
+
+
+def find_most_similar_modular(pickled_weights, weights):
+    output_ids = {}
+
+    apple_0 = -0.0092010498046875
+    apple_1 = 0.0009260177612304688
+    print('Apple weight 0 valid:',
+          pickled_weights[0][3055] == apple_0)
+    print('Apple weight 0 valid:',
+          pickled_weights[1][3055] == apple_1)
+
+    strawberry_0 = -0.0011796951293945312
+    strawberry_1 = -0.014251708984375
+    print('Strawberry weight 0 valid:',
+          pickled_weights[0][10233] == strawberry_0)
+    print('Strawberry weight 1 valid:',
+          pickled_weights[1][10233] == strawberry_1)
+
+    print('Apple 0 Match:')
+    matched = identify_similar_weight(pickled_weights, 0, apple_0)
+
+    print('Apple 1 Match:')
+    matched = identify_similar_weight(pickled_weights, 0, apple_1)
+
+    print('Strawberry 0 Match:')
+    matched = identify_similar_weight(pickled_weights, 0, strawberry_0)
+
+    print('Strawberry 1 Match:')
+    matched = identify_similar_weight(pickled_weights, 0, strawberry_1)
+
+    return [output_ids]
+
+
+def identify_similar_weight(pickled_weights, weight_index, weight_value):
+    output_ids = {}
+    similarities = []
+    top_x = 5
+
+    for token, token_value in enumerate(pickled_weights[weight_index]):
+        # print('Input index:', weight_index)
+        # print('Input token:', token)
+        # print('Input tensor value:', pickled_weights[weight_index][token])
+        input_tensor = torch.tensor(
+            [pickled_weights[weight_index][token]])
+        # print('Input tensor:', input_tensor)
+        # print('Input tensor value:', input_tensor.item())
+        # print(f"Weight {weight_index}, token {token}")
+
+        token_tensor = torch.tensor([weight_value])
+        difference = torch.abs(input_tensor - token_tensor).item()
+        similarities.append((difference, token))
+
+    top_x_similarities = sorted(
+        similarities, key=lambda x: x[0], reverse=False)[:top_x]
+
+    print(f"Weight {weight_index} top most similar floats and their indices:",
+          top_x_similarities)
+
+    # for idx, similarity in top_x_similarities:
+    #     output_ids[idx] = similarity[1]
+
+    return output_ids
 
 
 def write_token_weights():
