@@ -6,7 +6,7 @@ This is a fork of the embedding editor extension that is attempting to improve t
 
 I have included functionality that allows you to build a pickle containing an index of all of the weights for all tokens in the Stable Diffusion vocabulary.
 
-Using this token the intention is to update the interface so that an understandable token can be associated with the current and neighboring values of each weight slider.
+Using this data the intention is to update the interface so that an understandable token can be associated with the current and neighboring values of each weight slider.
 
 ### Original README
 
