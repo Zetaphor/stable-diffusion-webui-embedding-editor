@@ -210,7 +210,7 @@ def on_ui_tabs():
 
         def load_weights(*weights):
             pickled_weights = load_pickled_weights()
-            return find_most_similar_modular(pickled_weights, weights)
+            return find_similar_modular(pickled_weights, weights)
 
         btn_find_similar_modular.click(
             fn=load_weights,
@@ -219,7 +219,7 @@ def on_ui_tabs():
         )
 
         btn_find_similar_single.click(
-            fn=load_weights,
+            fn=find_similar_single,
             inputs=[] + weight_sliders,
             outputs=[similarity_hidden_cache]
         )
@@ -512,7 +512,7 @@ def load_pickled_weights():
     return loaded_weights
 
 
-def find_most_similar_single():
+def find_similar_single(*weights):
     embedder = shared.sd_model.cond_stage_model.wrapped
     sd_version = '1.x'
     if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
@@ -527,12 +527,17 @@ def find_most_similar_single():
         token_weights = pickle.load(f)
 
     cos_sim = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
+    # Apple
+    # -0.00919342041015625
+    # Weight 2
+    # 0.000904083251953125
+    # input_tensor = torch.tensor([-0.00919342041015625])
     input_tensor = torch.tensor([token_weights[0][3055]])
     # print('Input tensor:', input_tensor)
     # print('Input tensor value:', input_tensor.item())
 
     similarities = []
-    top_x = 3
+    top_x = 5
 
     for idx, token in enumerate(token_weights[0]):
         token_tensor = torch.tensor([token])
@@ -547,13 +552,15 @@ def find_most_similar_single():
 
     print("Top", top_x, "most similar floats and their indices:", top_x_similarities)
 
-    # print('Apple weight 0')
-    # print(token_weights[0][3055])
+    print('Weight showing in slider:', weights[0])
+
+    print('Apple weight 0')
+    print(token_weights[0][3055])
 
     return []
 
 
-def find_most_similar_modular(pickled_weights, weights):
+def find_similar_modular(pickled_weights, weights):
     output_ids = {}
 
     apple_0 = -0.0092010498046875
