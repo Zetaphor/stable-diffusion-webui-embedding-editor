@@ -1,5 +1,15 @@
 ![preview image](embedding_editor_v2.png)
 
+### Embedding Editor
+
+This is a fork of the embedding editor extension that is attempting to improve the UI as well as bring some semantic understanding to the various weight values.
+
+I have included functionality that allows you to build a pickle containing an index of all of the weights for all tokens in the Stable Diffusion vocabulary.
+
+Using this token the intention is to update the interface so that an understandable token can be associated with the current and neighboring values of each weight slider.
+
+### Original README
+
 A very early WIP of an embeddings editor for AUTOMATIC1111's webui.
 
 Should be placed in a sub-directory in extensions. e.g. \stable-diffusion-webui-master\extensions\embedding-editor\ You can now also install it automatically from the extensions tab in Automatic's UI.
