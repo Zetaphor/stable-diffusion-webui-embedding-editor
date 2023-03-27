@@ -6,6 +6,8 @@ This is a fork of the embedding editor extension that is attempting to improve t
 
 I have included functionality that allows you to build a pickle containing an index of all of the weights for all tokens in the Stable Diffusion vocabulary.
 
+Additionally there is added functionality to create a pickle containing the associated SD vocabulary tokens for every possible value for every range value. This takes approximately 8 hours to precompute. I will upload a hosted link to the precomputed pickle once my copy is finished.
+
 Using this data the intention is to update the interface so that an understandable token can be associated with the current and neighboring values of each weight slider.
 
 ### Original README
