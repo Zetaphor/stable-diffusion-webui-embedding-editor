@@ -153,12 +153,15 @@ def on_ui_tabs():
                                                     placeholder="token", show_label=True, interactive=True)
                         btn_align_to_input = gr.Button(
                             value="Align To Token", variant='primary')
+                    with gr.Row():
                         btn_find_similar_single = gr.Button(
                             value="Find Similar (Single)", variant='primary')
                         btn_find_similar_modular = gr.Button(
                             value="Find Similar (Modular)", variant='primary')
                         btn_generate_test = gr.Button(
                             value="Generate 0 Weight Test Image", variant='primary')
+                        btn_build_distribution_pickle = gr.Button(
+                            value="Create Weight Distribution Picke", variant='primary')
                         btn_pickle_index = gr.Button(
                             value="Create Weights Pickle", variant='primary')
                         btn_write_weights = gr.Button(
@@ -226,6 +229,10 @@ def on_ui_tabs():
 
         btn_pickle_index.click(
             fn=build_index_pickle,
+        )
+
+        btn_build_distribution_pickle.click(
+            fn=build_distribution_pickle,
         )
 
         selection_args = dict(
@@ -512,6 +519,116 @@ def load_pickled_weights():
     return loaded_weights
 
 
+def build_distribution_pickle():
+    # Find the min and max value for each weight
+    # Move from the min value to the max value in the weight, increasing by a tiny amount
+    # Record the top X weights for each step in the value
+    # Final record should be a collection of ranges, from the min to the max, which contains the range of each unique collection of matches
+    embedder = shared.sd_model.cond_stage_model.wrapped
+    sd_version = '1.x'
+    if embedder.__class__.__name__ == 'FrozenCLIPEmbedder':  # SD1.x detected
+        print('Using SD1.x embedder')
+
+    elif embedder.__class__.__name__ == 'FrozenOpenCLIPEmbedder':  # SD2.0 detected
+        print('Using SD2.x embedder')
+        sd_version = '2.x'
+
+    print('Loading pickled weights...')
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weights.pkl'), 'rb') as f:
+        token_weights = pickle.load(f)
+    print('Finished loading pickled weights')
+
+    weight_distribution = {}
+
+    # Step threshold of 0.000001
+    # I can go as low as 0.001
+    # Index 0: [48931, 33233, 31146]
+    # Index 69: [13416, 17893, 34605]
+    # Index 259: [1075, 2115, 11135]
+    # Index 700: [45781, 44323, 39564]
+    # Around 68K calculations per 30 minutes
+
+    # Current lowest threshold
+    step_threshold = 0.001
+
+    # Manually starting at higher range now!
+    for i in range(700, 768):
+        print(f"Building weight distribution for index {i}")
+
+        floor = embedding_editor_distribution_floor[i].item()
+        ceil = embedding_editor_distribution_ceiling[i].item()
+
+        current_min_val = floor
+
+        token_ranges = []
+
+        # Initialize the list with the floor value
+        found_tokens = closest_tokens(current_min_val, token_weights[i])
+
+        # print(f"{i} initial list", found_tokens)
+
+        print(
+            f"Index {i} total steps: {int(ceil / step_threshold) - int(floor / step_threshold)}")
+        print(
+            f"Index {i} min/max : {floor}/{ceil}")
+
+        start_time = datetime.datetime.now()
+        for step_index in range(int(floor / step_threshold), int(ceil / step_threshold)):
+            start_time = datetime.datetime.now()
+            step_value = step_index * step_threshold
+            step_tokens = closest_tokens(step_value, token_weights[i])
+            # We're using sets here because it's probably fine if they're not in the same order if the values are the same
+            if set(found_tokens) != set(step_tokens):
+                token_ranges.append({
+                    'min': current_min_val,
+                    'max': step_value,
+                    'tokens': step_tokens
+                })
+                current_min_val = step_value
+                found_tokens = step_tokens
+                time_diff = datetime.datetime.now() - start_time
+                print(
+                    f"Added weight token range for step {step_value} in index {i} at {round(time_diff.total_seconds(), 2)} seconds")
+                print(step_tokens)
+                break  # Stop early for testing
+        break  # Stop early for testing
+
+        weight_distribution[i] = token_ranges
+        # Checkpoint the weight distribution
+        pickle_start_time = datetime.datetime.now()
+        print(
+            f'Saving weight distribution with index {i} at {round(time_diff.total_seconds(), 2)} seconds')
+        with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weight-distribution.pkl'), 'wb') as f:
+            pickle.dump(token_weights, f)
+        pickle_time_diff = datetime.datetime.now() - pickle_start_time
+        print(
+            f'Finished saving weight distribution in {round(pickle_time_diff.total_seconds(), 2)} seconds')
+
+    print(weight_distribution)
+
+
+def closest_tokens(input_val, index_weights):
+    input_tensor = torch.tensor([input_val])
+
+    similarities = []
+    top_x = 3
+
+    for idx, token in enumerate(index_weights):
+        token_tensor = torch.tensor([token])
+        difference = torch.abs(input_tensor - token_tensor).item()
+        if difference <= 0.1:
+            similarities.append((difference, idx))
+
+    # Sort by difference and take the top X
+    top_x_similarities = sorted(
+        similarities, key=lambda x: x[0], reverse=False)[:top_x]
+
+    tokens_only = [tup[1] for tup in top_x_similarities]
+
+    return tokens_only
+# [(5.112588405609131e-05, 21757), (0.011545553803443909, 48931), (0.011637106537818909, 33233)]
+
+
 def find_similar_single(*weights):
     embedder = shared.sd_model.cond_stage_model.wrapped
     sd_version = '1.x'
@@ -527,22 +644,20 @@ def find_similar_single(*weights):
         token_weights = pickle.load(f)
 
     cos_sim = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
-    # Apple
-    # -0.00919342041015625
-    # Weight 2
-    # 0.000904083251953125
-    # input_tensor = torch.tensor([-0.00919342041015625])
-    input_tensor = torch.tensor([token_weights[0][3055]])
+    input_tensor = torch.tensor([-0.00416564941406])
+    # input_tensor = torch.tensor([token_weights[0][1929]])
     # print('Input tensor:', input_tensor)
     # print('Input tensor value:', input_tensor.item())
 
     similarities = []
-    top_x = 5
+    top_x = 3
 
     for idx, token in enumerate(token_weights[0]):
         token_tensor = torch.tensor([token])
         difference = torch.abs(input_tensor - token_tensor).item()
-        similarities.append((difference, idx))
+        if (difference <= 0.01):
+            similarities.append((difference, idx))
+        # print(f"{idx}: {difference}")
 
     # Sort by difference and take the top X
     top_x_similarities = sorted(similarities, key=lambda x: x[0])[:top_x]
@@ -552,10 +667,21 @@ def find_similar_single(*weights):
 
     print("Top", top_x, "most similar floats and their indices:", top_x_similarities)
 
-    print('Weight showing in slider:', weights[0])
+    # print('Weight showing in slider:', weights[0])
 
-    print('Apple weight 0')
-    print(token_weights[0][3055])
+    # print('Strawberry weight 0')
+    # print(token_weights[0][10233])
+
+    # print('Apple weight 0')
+    # print(token_weights[0][3055])
+
+    # print('Apple weight 0')
+    # print(token_weights[0][8922])
+
+    print('Dog weight 0')
+    print(token_weights[0][1929])
+
+    1929
 
     return []
 
