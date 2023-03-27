@@ -551,8 +551,10 @@ def build_distribution_pickle():
     # Current lowest threshold
     step_threshold = 0.001
 
+    start_time = datetime.datetime.now()
+
     # Manually starting at higher range now!
-    for i in range(700, 768):
+    for i in range(0, 768):
         print(f"Building weight distribution for index {i}")
 
         floor = embedding_editor_distribution_floor[i].item()
@@ -562,19 +564,23 @@ def build_distribution_pickle():
 
         token_ranges = []
 
+        # Started at 9:18PM
+
         # Initialize the list with the floor value
         found_tokens = closest_tokens(current_min_val, token_weights[i])
 
         # print(f"{i} initial list", found_tokens)
 
-        print(
-            f"Index {i} total steps: {int(ceil / step_threshold) - int(floor / step_threshold)}")
-        print(
-            f"Index {i} min/max : {floor}/{ceil}")
+        # print(
+        #     f"Index {i} total steps: {int(ceil / step_threshold) - int(floor / step_threshold)}")
+        # print(
+        #     f"Index {i} min/max : {floor}/{ceil}")
 
-        start_time = datetime.datetime.now()
+        time_diff = datetime.datetime.now() - start_time
+        print(
+            f"Starting index {i} at {round(time_diff.total_seconds(), 2)} seconds")
+
         for step_index in range(int(floor / step_threshold), int(ceil / step_threshold)):
-            start_time = datetime.datetime.now()
             step_value = step_index * step_threshold
             step_tokens = closest_tokens(step_value, token_weights[i])
             # We're using sets here because it's probably fine if they're not in the same order if the values are the same
@@ -586,25 +592,26 @@ def build_distribution_pickle():
                 })
                 current_min_val = step_value
                 found_tokens = step_tokens
-                time_diff = datetime.datetime.now() - start_time
-                print(
-                    f"Added weight token range for step {step_value} in index {i} at {round(time_diff.total_seconds(), 2)} seconds")
-                print(step_tokens)
-                break  # Stop early for testing
-        break  # Stop early for testing
+                # time_diff = datetime.datetime.now() - start_time
+                # print(
+                #     f"Added weight token range for step {step_value} in index {i} at {round(time_diff.total_seconds(), 2)} seconds")
+                # print(step_tokens)
+                # break  # Stop early for testing
+        # break  # Stop early for testing
 
         weight_distribution[i] = token_ranges
         # Checkpoint the weight distribution
-        pickle_start_time = datetime.datetime.now()
-        print(
-            f'Saving weight distribution with index {i} at {round(time_diff.total_seconds(), 2)} seconds')
-        with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weight-distribution.pkl'), 'wb') as f:
-            pickle.dump(token_weights, f)
-        pickle_time_diff = datetime.datetime.now() - pickle_start_time
-        print(
-            f'Finished saving weight distribution in {round(pickle_time_diff.total_seconds(), 2)} seconds')
 
+    time_diff = datetime.datetime.now() - start_time
+    print(
+        f'Saving weight distribution with index {i} at {round(time_diff.total_seconds(), 2)} seconds')
+    with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weight-distribution.pkl'), 'wb') as f:
+        pickle.dump(token_weights, f)
+    pickle_time_diff = datetime.datetime.now() - start_time
+    print(
+        f'Finished saving weight distribution at {round(pickle_time_diff.total_seconds(), 2)} seconds')
     print(weight_distribution)
+    print('Finished building weight distribution!')
 
 
 def closest_tokens(input_val, index_weights):
