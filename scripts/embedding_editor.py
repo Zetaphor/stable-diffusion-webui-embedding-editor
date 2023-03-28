@@ -142,32 +142,34 @@ def on_ui_tabs():
                     generate_preview = gr.Button(
                         value="Generate Preview", variant='primary')
 
+                with gr.Row():
+                    input_align_to = gr.Textbox(elem_id="align_to_token", value="", label="Alignment Token",
+                                                placeholder="token", show_label=True, interactive=True)
+                    btn_align_to_input = gr.Button(
+                        value="Align To Token", variant='primary')
+
+                with gr.Row():
+                    btn_find_similar_distribution = gr.Button(
+                        value="Find Similar (Distribution)", variant='primary')
+                    btn_generate_test = gr.Button(
+                        value="Generate 0 Weight Test Image", variant='primary')
+                    btn_build_distribution_pickle = gr.Button(
+                        value="Create Weight Distribution Picke", variant='primary')
+
                 generation_info = gr.HTML()
                 html_info = gr.HTML()
 
-        with gr.Row().style(equal_height=False):
-            with gr.Column(variant='panel', scale=1.5):
-                with gr.Column():
-                    with gr.Row():
-                        input_align_to = gr.Textbox(elem_id="align_to_token", value="", label="Alignment Token",
-                                                    placeholder="token", show_label=True, interactive=True)
-                        btn_align_to_input = gr.Button(
-                            value="Align To Token", variant='primary')
-                    with gr.Row():
-                        btn_find_similar_distribution = gr.Button(
-                            value="Find Similar (Distribution)", variant='primary')
-                        btn_generate_test = gr.Button(
-                            value="Generate 0 Weight Test Image", variant='primary')
-                        btn_build_distribution_pickle = gr.Button(
-                            value="Create Weight Distribution Picke", variant='primary')
-                        # btn_find_similar_single = gr.Button(
-                        #     value="Find Similar (Single)", variant='primary')
-                        # btn_find_similar_modular = gr.Button(
-                        #     value="Find Similar (Modular)", variant='primary')
-                        # btn_pickle_index = gr.Button(
-                        #     value="Create Weights Pickle", variant='primary')
-                        # btn_write_weights = gr.Button(
-                        #     value="Create Weights JSON", variant='primary')
+        # with gr.Row().style(equal_height=False):
+        #     with gr.Column(variant='panel', scale=1.5):
+        #         with gr.Column():
+                # btn_find_similar_single = gr.Button(
+                #     value="Find Similar (Single)", variant='primary')
+                # btn_find_similar_modular = gr.Button(
+                #     value="Find Similar (Modular)", variant='primary')
+                # btn_pickle_index = gr.Button(
+                #     value="Create Weights Pickle", variant='primary')
+                # btn_write_weights = gr.Button(
+                #     value="Create Weights JSON", variant='primary')
 
         preview_args = dict(
             fn=wrap_gradio_gpu_call(generate_embedding_preview),
