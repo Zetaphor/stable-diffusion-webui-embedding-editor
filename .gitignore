@@ -1,3 +1,4 @@
 scripts/__pycache__
 weights/*.pkl
 weights/*.json
+!weights/*-distribution.pkl

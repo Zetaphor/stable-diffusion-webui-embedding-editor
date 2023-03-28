@@ -608,9 +608,7 @@ def build_distribution_pickle():
     with open(os.path.join(os.getcwd(), 'extensions/stable-diffusion-webui-embedding-editor/weights', sd_version + '-weight-distribution.pkl'), 'wb') as f:
         pickle.dump(weight_distribution, f)
     pickle_time_diff = datetime.datetime.now() - start_time
-    print(
-        f'Finished saving weight distribution at {round(pickle_time_diff.total_seconds(), 2)} seconds')
-    print(weight_distribution)
+    # print(weight_distribution)
     print('Finished building weight distribution!')
 
 
